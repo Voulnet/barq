@@ -33,7 +33,12 @@ Better to create a virtualenv environment for the tool. Please note that using s
 
 PRs are welcome!
 
-### Help
+## Help
 
 - From outside (in the terminal), run it with -help.
 - From inside the tool, run **help** to see each menu's command options.
+
+## Questions?
+
+- Raise an issue here in Github.
+- Contact me on Twitter.
