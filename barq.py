@@ -116,31 +116,44 @@ def start():
 
 
     myargs = dict(args.grouped)
-    if '-help' in myargs:
+    if '--help' in myargs or '-h' in myargs:
         help = """
         barq framework options:
-        -help      - This menu
-        -keyid      - The AWS access key id
-        -secretkey  - The AWS secret access key. (Needs -keyid, mandatory)
-        -region     - The default region to use. (Needs -keyid)
-        -token      - The AWS session token to use. (Needs -keyid, optional)
+        -h --help         - This menu
+        -k --keyid        - The AWS access key id
+        -s --secretkey    - The AWS secret access key. (Needs --keyid, mandatory)
+        -r --region       - The default region to use. (Needs --keyid)
+        -t --token        - The AWS session token to use. (Needs --keyid, optional)
         """
         print (help)
         exit(0)
-    if '-keyid' in myargs:
-        aws_access_key_id = myargs['-keyid'][0]
-        if '-secretkey' not in myargs:
-            puts(color("[!] using -secretkey is mandatory with -keyid"))
+    if '--keyid' in myargs or '-k' in myargs:
+        try:
+            aws_access_key_id = myargs['--keyid'][0]
+        except:
+            aws_access_key_id = myargs['-k'][0]
+        if '--secretkey' not in myargs and '-s' not in myargs:
+            puts(color("[!] using --secretkey is mandatory with --keyid"))
             exit()
-        aws_secret_access_key = myargs['-secretkey'][0]
-        if '-region' not in myargs:
-            puts(color("[!] using -region is mandatory with -keyid"))
+        try:
+            aws_secret_access_key = myargs['--secretkey'][0]
+        except:
+            aws_secret_access_key = myargs['-s'][0]
+        if '--region' not in myargs and '-r' not in myargs:
+            puts(color("[!] using --region is mandatory with --keyid"))
             exit()
-        region_name = myargs['-region'][0]
-        if '-token' in myargs:
-            aws_session_token = myargs['-token'][0]
+        try:
+            region_name = myargs['--region'][0]
+        except:
+            region_name = myargs['-r'][0]
+        if '--token' in myargs or '-t' in myargs:
+            try:
+                aws_session_token = myargs['--token'][0]
+            except:
+                aws_session_token = myargs['-t'][0]
         else:
             aws_session_token = ''
+
         set_aws_creds_inline(aws_access_key_id,aws_secret_access_key,region_name,aws_session_token)
 
     menu_forward('main')
