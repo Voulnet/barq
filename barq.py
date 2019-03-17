@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from pyfiglet import Figlet
 import boto3, json
 from clint.arguments import Args
 from clint.textui import puts, colored, indent, prompt, validators
@@ -89,7 +88,6 @@ def start():
     :return: None
     """
     signal.signal(signal.SIGINT, signal.default_int_handler)
-    f = Figlet(font='slant')
     args = Args()
     puts(color(asciilogo,'blue'))
 
