@@ -88,7 +88,6 @@ def start():
     :return: None
     """
     signal.signal(signal.SIGINT, signal.default_int_handler)
-    f = Figlet(font='slant')
     args = Args()
     puts(color(asciilogo,'blue'))
 
