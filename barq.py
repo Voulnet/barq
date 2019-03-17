@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from pyfiglet import Figlet
 import boto3, json
 from clint.arguments import Args
 from clint.textui import puts, colored, indent, prompt, validators
