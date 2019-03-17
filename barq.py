@@ -93,7 +93,7 @@ def start():
     args = Args()
     puts(color(asciilogo,'blue'))
 
-    puts(color("barq cloud post exploitation framework by Mohammed Aldoub @Voulnet","green"))
+    puts(color("barq: The AWS post exploitation framework written by Mohammed Aldoub @Voulnet","green"))
 
     global loot_creds
     global ec2instances
