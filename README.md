@@ -1,3 +1,5 @@
+![Logo of barq](https://raw.githubusercontent.com/Voulnet/barq/master/logo.png)
+
 # barq
 barq: The AWS Cloud Post Exploitation framework!
 
