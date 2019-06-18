@@ -1610,26 +1610,35 @@ def set_aws_creds(caller):
         mysession = boto3.session.Session(aws_access_key_id=aws_access_key_id,aws_secret_access_key=aws_secret_access_key,region_name='us-west-2', aws_session_token=aws_session_token)
     ec2client = mysession.client('ec2')
     regionresponse = ''
+    choose_your_region = False
+    possible_regions = []
     try:
         regionresponse = ec2client.describe_regions()
     except Exception as e:
         if "OptInRequired" in str(e):
             puts(color("[!] OptInRequired Error: The keys are valid but you have a problem in your AWS account."
                        "Your account may be under validation by AWS. Is it a new account?"))
+        elif "UnauthorizedOperation" in str(e):
+            choose_your_region = True
         else:
             puts(color("[!] Error accessing AWS services. Double check your AWS keys, tokens, privileges and region."))
-        go_to_menu(caller)
-    regions = regionresponse['Regions']
-    region_table = PrettyTable(['Region'])
-    possible_regions = []
-    for region in regions:
-        region_table.add_row([region['RegionName']])
-        possible_regions.append(region['RegionName'])
-    print(region_table)
-    chosen_region = prompt.query('What is your preferred AWS region?',default='us-west-2')
-    if chosen_region not in possible_regions:
-        puts(color("[!] Invalid AWS region! Exiting...."))
-        exit()
+            print(e)
+        if choose_your_region == False:
+            go_to_menu(caller)
+    if choose_your_region == True:
+        chosen_region = prompt.query('What is your preferred AWS region?',default='us-west-2')
+    else:    
+        regions = regionresponse['Regions']
+        region_table = PrettyTable(['Region'])
+        possible_regions = []
+        for region in regions:
+            region_table.add_row([region['RegionName']])
+            possible_regions.append(region['RegionName'])
+        print(region_table)
+        chosen_region = prompt.query('What is your preferred AWS region?',default='us-west-2')
+        if chosen_region not in possible_regions:
+            puts(color("[!] Invalid AWS region! Exiting...."))
+            exit()
     if aws_session_token == '':
         mysession = boto3.session.Session(aws_access_key_id=aws_access_key_id,aws_secret_access_key=aws_secret_access_key,region_name=chosen_region)
     else:
