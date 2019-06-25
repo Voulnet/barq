@@ -17,11 +17,11 @@ To run the msfvenom payloads, you need msfvenom to be available on your workstat
 
 For python 2:
 ```
-pip install -r req.txt
+pip install -r requirements.txt
 ```
 For python3
 ```
-pip3 install -r req.txt
+pip3 install -r requirements.txt
 ```
 
 Better to create a virtualenv environment for the tool. Please note that using sudo with pip is not recommended.
