@@ -16,6 +16,7 @@ import signal
 import re
 from threading import Event, Thread
 import logging
+from getpass import getpass
 from pygments import highlight
 from pygments.lexers.data import JsonLexer
 from pygments.formatters.terminal import TerminalFormatter
@@ -1622,11 +1623,11 @@ def set_aws_creds(caller):
     global menu_stack
     global my_aws_creds
     readline.set_completer(None)
-    aws_access_key_id = prompt.query('Enter your AWS Access Key ID:')
-    puts(color("[*] Key id is: %s"%aws_access_key_id))
-    aws_secret_access_key = prompt.query('Enter AWS Secret Access Key:')
-    puts(color("[*] secret key is: %s"%aws_secret_access_key))
-    aws_session_token = prompt.query("Enter your session token, only if needed. ", validators=[])
+    aws_access_key_id = getpass('Enter your AWS Access Key ID:')
+    puts(color("[*] Key id is: %s************%s"%(aws_access_key_id[0:2],aws_access_key_id[-3:-1])))
+    aws_secret_access_key = getpass('Enter AWS Secret Access Key:')
+    puts(color("[*] secret key is: %s************%s"%(aws_secret_access_key[0:2],aws_secret_access_key[-3:-1])))
+    aws_session_token = getpass("Enter your session token, only if needed: ")
     if aws_session_token == '':
         mysession = boto3.session.Session(aws_access_key_id=aws_access_key_id,aws_secret_access_key=aws_secret_access_key,region_name='us-west-2')
     else:
