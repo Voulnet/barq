@@ -99,9 +99,11 @@ def start():
     global my_aws_creds
     global secgroups
     global command_invocations
+    global lambdafunctions
     menu_stack = []
     loot_creds = {'secrets':[],'tokens':[],'parameters':[]}
     ec2instances = {'instances':[]}
+    lambdafunctions = {'functions':[]}
     secgroups = {'groups':[]}
     my_aws_creds = {}
     command_invocations = {'commands':[]}
@@ -1499,6 +1501,7 @@ def find_attacksurface(caller):
     global my_aws_creds
     global ec2instances
     global secgroups
+    global lambdafunctions
     mysession = ''
     try:
         mysession = my_aws_creds['session']
@@ -1517,6 +1520,7 @@ def find_attacksurface(caller):
         #else:
         mysession = boto3.session.Session(aws_access_key_id=my_aws_creds['aws_access_key_id'],aws_secret_access_key=my_aws_creds['aws_secret_access_key'],region_name=region,aws_session_token=my_aws_creds['aws_session_token'])
         ec2resource = mysession.resource('ec2')
+        lambdaclient = mysession.client('lambda')
         instances = ec2resource.instances.all()
         puts(color('[..] Now searching for details of EC2 instances'))
         for instance in instances:
@@ -1588,6 +1592,25 @@ def find_attacksurface(caller):
             thisgroup['ip_permissions_egress'] = ip_permissions_egress
             secgroups['groups'].append(thisgroup)
 
+        puts(color('[..] Now searching for details of lambda functions'))
+        function_results = lambdaclient.list_functions()
+        functions = function_results['Functions']
+        for function in functions:
+            function_name = function['FunctionName']
+            function_arn = function['FunctionArn']
+            function_runtime = function.get('Runtime','')
+            function_role = function.get('Role','')
+            function_description = function.get('Description','')
+            function_Environment  = function.get('Environment',{})
+            
+            puts(color('[+] Function Name: %s'%function_name))
+            puts(color('[+] Function ARN: %s'%function_arn))
+            puts(color('[+] Function Runtime: %s'%function_runtime))
+            puts(color('[+] Function Role: %s'%function_role))
+            puts(color('[+] Function Description: %s'%function_description))
+            puts(color('[+] Function Environment variables: %s'%function_Environment))
+            lambdafunctions['functions'].append({'name':function_name,'function_arn':function_arn,'function_runtime':function_runtime,
+            'function_role':function_role,'function_description':function_description,'function_Environment':function_Environment,'region':region})
     go_to_menu(caller)
             
 def set_aws_creds(caller):
