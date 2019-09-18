@@ -90,7 +90,7 @@ def start():
     """
     signal.signal(signal.SIGINT, signal.default_int_handler)
     args = Args()
-    puts(color(asciilogo,'blue'))
+    puts(color(asciilogo,'yellow'))
 
     puts(color("barq: The AWS post exploitation framework written by Mohammed Aldoub @Voulnet","green"))
 
