@@ -1650,7 +1650,7 @@ def set_aws_creds(caller):
         if choose_your_region == False:
             go_to_menu(caller)
     if choose_your_region == True:
-        chosen_region = prompt.query('What is your preferred AWS region?',default='us-west-2')
+        chosen_region = prompt.query('What is your preferred AWS region?',default='us-east-1')
     else:    
         regions = regionresponse['Regions']
         region_table = PrettyTable(['Region'])
@@ -1659,7 +1659,7 @@ def set_aws_creds(caller):
             region_table.add_row([region['RegionName']])
             possible_regions.append(region['RegionName'])
         print(region_table)
-        chosen_region = prompt.query('What is your preferred AWS region?',default='us-west-2')
+        chosen_region = prompt.query('What is your preferred AWS region?',default='us-east-1')
         if chosen_region not in possible_regions:
             puts(color("[!] Invalid AWS region! Exiting...."))
             exit()
