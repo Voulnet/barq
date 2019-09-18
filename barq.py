@@ -359,24 +359,28 @@ def run_threaded_linux_command(mysession, target, action, payload):
     global command_invocations
     logger = logging.getLogger('log')
     logger.error('inside run_threaded_linux_command for %s' %target['id'])
-    mysession = boto3.session.Session(aws_access_key_id=my_aws_creds['aws_access_key_id'],
+    commandid = ''
+    result = {}
+    instanceid = target['id']
+    try:
+        mysession = boto3.session.Session(aws_access_key_id=my_aws_creds['aws_access_key_id'],
                                       aws_secret_access_key=my_aws_creds['aws_secret_access_key'], region_name=target['region'],
                                       aws_session_token=my_aws_creds['aws_session_token'])
-    ssmclient = mysession.client('ssm',region_name=target['region'])
-    instanceid = target['id']
-    response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[payload]})
-    commandid = response['Command']['CommandId']
-    logger.error('calling run_threaded_linux_command for %s and command: %s' %(target['id'],commandid))
-    command = {'id':commandid}
-    command['instanceid'] = instanceid
-    command['state'] = 'requested'
-    command['platform'] = 'linux'
-    command['region'] = target['region']
-    command_invocations['commands'].append(command)
-    time.sleep(10)
-    try:
+        ssmclient = mysession.client('ssm',region_name=target['region'])
+        
+        response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[payload]})
+        commandid = response['Command']['CommandId']
+        logger.error('calling run_threaded_linux_command for %s and command: %s' %(target['id'],commandid))
+        command = {'id':commandid}
+        command['instanceid'] = instanceid
+        command['state'] = 'requested'
+        command['platform'] = 'linux'
+        command['region'] = target['region']
+        command_invocations['commands'].append(command)
+        time.sleep(10)
         result = ssmclient.get_command_invocation(CommandId=commandid,InstanceId=instanceid)
-    except:
+    except Exception as e:
+        logger.error(e)
         pass
     logger.error('calling run_threaded_linux_command for %s and command: %s and result: %s' % (target['id'], commandid,result['Status']))
     while result['Status'] in {'InProgress', 'Pending','Waiting'}:
@@ -412,6 +416,8 @@ def run_threaded_windows_command(mysession, target, action, payload, disableav):
     global my_aws_creds
     global command_invocations
     logger = logging.getLogger('log')
+    response = {}
+    commandid = ''
     logger.error("inside run_threaded_windows_command for %s" % target['id'])
     mysession = boto3.session.Session(aws_access_key_id=my_aws_creds['aws_access_key_id'],
                                       aws_secret_access_key=my_aws_creds['aws_secret_access_key'],
@@ -424,8 +430,12 @@ def run_threaded_windows_command(mysession, target, action, payload, disableav):
     #stage1 disable windows defender.
     if disableav:
         logger.error("inside run_threaded_windows_command for %s, before line: %s" % (target['id'], 'disable_windows_defender'))
-        response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[disable_windows_defender()]})
-        commandid = response['Command']['CommandId']
+        try:
+            response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[disable_windows_defender()]})
+        
+            commandid = response['Command']['CommandId']
+        except Exception as e:
+            logger.error(e)
         #############
         time.sleep(10)
         logger.error("inside run_threaded_windows_command for %s, before line: %s" % (target['id'], 'get_command_invocation 1'))
