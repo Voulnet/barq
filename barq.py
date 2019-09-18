@@ -1135,8 +1135,8 @@ def find_all_creds(caller):
             for name in secretnames:
                 resp = secretsclient.get_secret_value(SecretId=name)
                 
-                puts(colored.magenta("Secret Name: %s" %name)) 
-                puts(colored.magenta("Secret Value: %s" %resp['SecretString']))
+                puts(color("Secret Name: %s" %name,"green")) 
+                puts(color("Secret Value: %s" %resp['SecretString'],"green"))
                 resp2 = secretsclient.describe_secret(SecretId=name)
                 description = resp2.get('Description','')
                 loot_creds['secrets'].append({'name':name,'value':resp['SecretString'],'description':description})
@@ -1154,7 +1154,7 @@ def find_all_creds(caller):
             if len(paramnames) > 0:
                 getparamsresponse = ssmclient.get_parameters(Names=paramnames,WithDecryption=True).get('Parameters')
                 for getparam in getparamsresponse:
-                    puts(colored.magenta("Parameter Name: %s, Parameter Value: %s" %(getparam['Name'], getparam['Value'])))
+                    puts(color("Parameter Name: %s, Parameter Value: %s" %(getparam['Name'], getparam['Value']),"green"))
                     loot_creds['parameters'].append({'name':getparam['Name'],'value':getparam['Value']})
         except Exception as e: 
             print(e)
