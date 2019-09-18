@@ -441,6 +441,7 @@ def run_threaded_windows_command(mysession, target, action, payload, disableav):
             commandid = response['Command']['CommandId']
         except Exception as e:
             logger.error(e)
+            return False
         #############
         time.sleep(10)
         logger.error("inside run_threaded_windows_command for %s, before line: %s" % (target['id'], 'get_command_invocation 1'))
@@ -459,7 +460,11 @@ def run_threaded_windows_command(mysession, target, action, payload, disableav):
     time.sleep(3)
     logger.error(
         "inside run_threaded_windows_command for %s, before line: %s" % (target['id'], 'windows payload'))
-    response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[payload]})
+    try:
+        response = ssmclient.send_command(InstanceIds=[instanceid,],DocumentName=action,DocumentVersion='$DEFAULT',TimeoutSeconds=3600,Parameters={'commands':[payload]})
+    except Exception as e:
+        logger.error("inside run_threaded_windows_command for instance %s, returning error: %s" %(target['id'],str(e)))
+        return False
     commandid = response['Command']['CommandId']
     #################
     command = {'id':commandid}
