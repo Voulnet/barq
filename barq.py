@@ -362,6 +362,7 @@ def run_threaded_linux_command(mysession, target, action, payload):
     commandid = ''
     result = {}
     instanceid = target['id']
+    last_error = ''
     try:
         mysession = boto3.session.Session(aws_access_key_id=my_aws_creds['aws_access_key_id'],
                                       aws_secret_access_key=my_aws_creds['aws_secret_access_key'], region_name=target['region'],
@@ -381,8 +382,12 @@ def run_threaded_linux_command(mysession, target, action, payload):
         result = ssmclient.get_command_invocation(CommandId=commandid,InstanceId=instanceid)
     except Exception as e:
         logger.error(e)
+        last_error = str(e)
         pass
-    logger.error('calling run_threaded_linux_command for %s and command: %s and result: %s' % (target['id'], commandid,result['Status']))
+    logger.error('calling run_threaded_linux_command for %s and command: %s ' % (target['id'], commandid))
+    if 'Status' not in result:
+        logger.error('run_threaded_linux_command for %s and command: %s failed with error: %s' % (target['id'], commandid, last_error))
+        return
     while result['Status'] in {'InProgress', 'Pending','Waiting'}:
         time.sleep(10)
         result = ssmclient.get_command_invocation(CommandId=commandid,InstanceId=instanceid)
