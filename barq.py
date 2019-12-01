@@ -1607,7 +1607,7 @@ def find_attacksurface(caller):
                     protocol = 'All'
                 fromport = rule.get('FromPort','Any')
                 toport = rule.get('ToPort','Any')
-                puts(colored.magenta( "Ingress Rule: fromport: %s, toport: %s, protocol: %s, IP ranges: %s" %(fromport,toport,protocol,ranges)))
+                puts(colored.magenta( "Egress Rule: fromport: %s, toport: %s, protocol: %s, IP ranges: %s" %(fromport,toport,protocol,ranges)))
                 ip_permissions_egress.append({'protocol':protocol,'fromport':fromport, 'toport':toport,'ranges':rule.get('IpRanges',[])})
             thisgroup['ip_permissions'] = ip_permissions
             thisgroup['ip_permissions_egress'] = ip_permissions_egress
