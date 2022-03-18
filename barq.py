@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from genericpath import exists
 import boto3
 from botocore.exceptions import ClientError
 import csv
