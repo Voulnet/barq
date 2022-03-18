@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from genericpath import exists
 import boto3
 from botocore.exceptions import ClientError
+import csv
 import json
 from clint.arguments import Args
 from clint.textui import puts, colored, indent, prompt, validators
@@ -1163,6 +1165,10 @@ def process_instances_command(command):
         menu_backward()
     elif command == 'list':
         get_ec2_instances('ec2instances')
+    elif command == 'export':
+        export_ec2_instances('ec2instances')
+    elif command == 'import':
+        import_ec2_instances('ec2instances')
     elif command == 'showsecrets':
         show_aws_creds('ec2instances')
     elif command == 'commandresults':
@@ -1392,6 +1398,62 @@ def get_ec2_instances(caller):
     except:
         puts(color(
             '[!] You have no stored EC2 instances. Run the command attacksurface to discover them'))
+    go_to_menu(caller)
+
+
+def export_ec2_instances(caller):
+    """
+    Export discovered EC2 instances to a csv file (instances.csv).
+    :param caller: Calling menu to return to.
+    :return: None
+    """
+    global ec2instances
+    try:
+        header = ['Instance ID', 'Platform', 'Region', 'State', 'Public IP', 'Public DNS name',
+                                       'Profile', 'AMI ID']
+        with open('instances.csv', 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(header)
+            for ins in ec2instances['instances']:
+                writer.writerow([ins.get('id'), ins.get('platform'), ins.get('region'), ins.get('state'),
+                                        ins.get('public_ip_address'),
+                                        ins.get('public_dns_name'), ins.get('iam_profile', ''), ins.get('ami_id', '')])
+        puts(color(
+            '[*] Exported instances to instances.csv in the current directory'))
+    except:
+        puts(color(
+            '[!] You have no stored EC2 instances. Run the command attacksurface to discover them'))
+    go_to_menu(caller)
+
+
+def import_ec2_instances(caller):
+    """
+    Import EC2 instances from a csv file (instances.csv).
+    :param caller: Calling menu to return to.
+    :return: None
+    """
+    global ec2instances
+    try:
+        puts(color(
+            '[*] Importing instances from instances.csv in the current directory'))
+        with open('instances.csv') as csvfile:
+            csv_reader = csv.reader(csvfile, delimiter=',')
+            line_count = 0
+            for row in csv_reader:
+                if line_count != 0:
+                    exists = False
+                    # To avoid duplicates
+                    for ins in ec2instances['instances']:
+                        if ins.get('id', '') == row[0]:
+                            exists = True
+                    if not exists:
+                        ec2instances['instances'].append({'id': row[0], 'public_dns_name': row[5], 'public_ip_address': row[4],
+                                                'platform': row[1], 'ami_id': row[7], 'state': row[3], 'region': row[2], 'iam_profile': row[6]})
+                else:
+                    line_count += 1
+    except:
+        puts(color(
+            '[!] File instances.csv does not exist.'))
     go_to_menu(caller)
 
 
@@ -2077,6 +2139,8 @@ def instances_help():
             showsecrets     - Show credentials and secrets acquired from the target AWS account
             ec2attacks      - Launch attacks against running EC2 instances
             list            - List all discovered EC2 instances
+            export          - Export all discovered EC2 instances to a csv file (instances.csv)
+            import          - Import EC2 instances from a csv file (instances.csv)
             dumpsecrets     - Gather and dump credentials of EC2 in Secrets Manager and Parameter Store
             attacksurface   - Discover attack surface of target AWS account
             securitygroups  - List all discovered Security Groups
@@ -2086,7 +2150,7 @@ def instances_help():
     instances_loop()
 
 
-INSTANCESCOMMANDS = ['help', 'where', 'back', 'exit', 'setprofile', 'showprofile', 'showsecrets',
+INSTANCESCOMMANDS = ['help', 'where', 'back', 'exit', 'setprofile', 'showprofile', 'showsecrets', 'export', 'import',
                      'ec2attacks', 'dumpsecrets', 'attacksurface', 'list', 'commandresults', 'securitygroups', 'instance']
 
 
