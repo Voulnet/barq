@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import boto3
+from botocore.exceptions import ClientError
 import json
 from clint.arguments import Args
 from clint.textui import puts, colored, indent, prompt, validators
@@ -352,6 +353,31 @@ def wait_for_threaded_command_invocation(commandid, instanceid, region):
         return True, result
 
 
+def ssm_command_handler(ssmclient, instanceid, action, payload):
+    """
+    Run a Systems Manager command on a running EC2 instance.
+    :param ssmclient: Systems Manager client for the required region.
+    :param instanceid: id of target instance
+    :param action: Action to be run (AWS calls it DocumentName, here it's running a bash script)
+    :param payload: The actual payload to be executed on the target instance.
+    :return: returns status of execution.
+    """
+    try:
+        response = ssmclient.send_command(InstanceIds=[instanceid, ], DocumentName=action,
+                                      DocumentVersion='$DEFAULT', TimeoutSeconds=3600, Parameters={'commands': [payload]})
+        return response
+    except ClientError as e:
+        # Catch a specific exception
+        if e.response['Error']['Code'] == 'InvalidInstanceId':
+            msg = '[!] Sending command to EC2 instance failed.\nAWS Systems Manager might not be configured for the target instance:'
+            msg += '\n- https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-setting-up-ec2.html'
+            msg += '\n- https://stackoverflow.com/a/47036168'
+            puts(color(msg))
+            instances_loop()
+        else:
+            raise
+
+
 def run_linux_command(ssmclient, instanceid, action, payload):
     """
     Run a Systems Manager command on a running Linux instance.
@@ -361,8 +387,7 @@ def run_linux_command(ssmclient, instanceid, action, payload):
     :param payload: The actual payload to be executed on the target instance.
     :return: returns status of execution.
     """
-    response = ssmclient.send_command(InstanceIds=[instanceid, ], DocumentName=action,
-                                      DocumentVersion='$DEFAULT', TimeoutSeconds=3600, Parameters={'commands': [payload]})
+    response = ssm_command_handler(ssmclient, instanceid, action, payload)
     commandid = response['Command']['CommandId']
     success, result = wait_for_command_invocation(
         ssmclient, commandid, instanceid)
@@ -394,8 +419,7 @@ def run_threaded_linux_command(mysession, target, action, payload):
                                           aws_session_token=my_aws_creds['aws_session_token'])
         ssmclient = mysession.client('ssm', region_name=target['region'])
 
-        response = ssmclient.send_command(InstanceIds=[
-                                          instanceid, ], DocumentName=action, DocumentVersion='$DEFAULT', TimeoutSeconds=3600, Parameters={'commands': [payload]})
+        response = ssm_command_handler(ssmclient, instanceid, action, payload)
         commandid = response['Command']['CommandId']
         logger.error('calling run_threaded_linux_command for %s and command: %s' % (
             target['id'], commandid))
@@ -472,9 +496,7 @@ def run_threaded_windows_command(mysession, target, action, payload, disableav):
         logger.error("inside run_threaded_windows_command for %s, before line: %s" % (
             target['id'], 'disable_windows_defender'))
         try:
-            response = ssmclient.send_command(InstanceIds=[instanceid, ], DocumentName=action, DocumentVersion='$DEFAULT', TimeoutSeconds=3600, Parameters={
-                                              'commands': [disable_windows_defender()]})
-
+            response = ssm_command_handler(ssmclient, instanceid, action, disable_windows_defender())
             commandid = response['Command']['CommandId']
         except Exception as e:
             logger.error(e)
@@ -502,8 +524,7 @@ def run_threaded_windows_command(mysession, target, action, payload, disableav):
     logger.error(
         "inside run_threaded_windows_command for %s, before line: %s" % (target['id'], 'windows payload'))
     try:
-        response = ssmclient.send_command(InstanceIds=[
-                                          instanceid, ], DocumentName=action, DocumentVersion='$DEFAULT', TimeoutSeconds=3600, Parameters={'commands': [payload]})
+        response = ssm_command_handler(ssmclient, instanceid, action, payload)                         
     except Exception as e:
         logger.error("inside run_threaded_windows_command for instance %s, returning error: %s" % (
             target['id'], str(e)))
@@ -558,8 +579,7 @@ def run_threaded_windows_command(mysession, target, action, payload, disableav):
         time.sleep(30)
         logger.error(
             "inside run_threaded_windows_command for %s, before enable_windows_defender" % (target['id']))
-        response = ssmclient.send_command(InstanceIds=[instanceid, ], DocumentName=action, DocumentVersion='$DEFAULT', TimeoutSeconds=3600, Parameters={
-                                          'commands': [enable_windows_defender()]})
+        response = ssm_command_handler(ssmclient, instanceid, action, enable_windows_defender())
         commandid = response['Command']['CommandId']
         success, result = wait_for_threaded_command_invocation(
             commandid, instanceid, target['region'])
@@ -584,8 +604,7 @@ def run_windows_command(ssmclient, instanceid, action, payload, disableav):
     # stage1 disable windows defender.
     if disableav:
         puts(color('[..] Disabling Windows Defender momentarily...'))
-        response = ssmclient.send_command(InstanceIds=[instanceid, ], DocumentName=action, DocumentVersion='$DEFAULT', TimeoutSeconds=3600, Parameters={
-                                          'commands': [disable_windows_defender()]})
+        response = ssm_command_handler(ssmclient, instanceid, action, disable_windows_defender())
         commandid = response['Command']['CommandId']
         success, result = wait_for_command_invocation(
             ssmclient, commandid, instanceid)
@@ -596,8 +615,7 @@ def run_windows_command(ssmclient, instanceid, action, payload, disableav):
     # stage2 run payload
     puts(color('[..] Running payload...'))
     time.sleep(3)
-    response = ssmclient.send_command(InstanceIds=[instanceid, ], DocumentName=action,
-                                      DocumentVersion='$DEFAULT', TimeoutSeconds=3600, Parameters={'commands': [payload]})
+    response = ssm_command_handler(ssmclient, instanceid, action, payload)
     commandid = response['Command']['CommandId']
     success, result = wait_for_command_invocation(
         ssmclient, commandid, instanceid)
@@ -608,8 +626,7 @@ def run_windows_command(ssmclient, instanceid, action, payload, disableav):
     if disableav:
         time.sleep(30)
         puts(color('[..] Enabling Windows Defender again....'))
-        response = ssmclient.send_command(InstanceIds=[instanceid, ], DocumentName=action, DocumentVersion='$DEFAULT', TimeoutSeconds=3600, Parameters={
-                                          'commands': [enable_windows_defender()]})
+        response = ssm_command_handler(ssmclient, instanceid, action, enable_windows_defender())
         commandid = response['Command']['CommandId']
         success, result = wait_for_command_invocation(
             ssmclient, commandid, instanceid)
