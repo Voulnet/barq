@@ -4,23 +4,26 @@
 import boto3
 import json
 from clint.arguments import Args
-from clint.textui import puts, colored, indent, prompt, validators
+from clint.textui import puts, colored, indent, prompt
 import time
 from prettytable import PrettyTable
 import string
 import os
 import random
-import subprocess
 import readline
 import sys
 import signal
-import re
-from threading import Event, Thread
+from threading import Thread
 import logging
 from getpass import getpass
 from pygments import highlight
 from pygments.lexers.data import JsonLexer
 from pygments.formatters.terminal import TerminalFormatter
+from yaml import full_load, YAMLError
+
+# local imports
+from barq.logo import get_logo, get_welcome_msg
+
 # signing commit again
 PY2 = sys.version_info[0] == 2
 PY3 = sys.version_info[0] == 3
@@ -51,7 +54,7 @@ def set_session_region(region):
         return None
 
 
-def color(string, color=None):
+def color(string, color=None) -> str:
     """
     Change text color for the Linux terminal. (Taken from Empire: https://github.com/EmpireProject/Empire/blob/master/lib/common/helpers.py)
     """
@@ -87,17 +90,24 @@ def color(string, color=None):
         else:
             return string
 
+def get_secret() -> dict:
+    """ get amazon secret keys from yml file """
+    with open("barq/config.yml", 'r', encoding="utf-8") as stream:
+        try:
+            return full_load(stream)['amazon'].values()
+        except YAMLError as exception:
+            raise exception
 
-def start():
+def start() -> None:
     """
         The start of the barq functionality.
     :return: None
     """
     signal.signal(signal.SIGINT, signal.default_int_handler)
     args = Args()
-    puts(color(asciilogo, 'yellow'))
+    puts(color(get_logo(), 'yellow'))
 
-    puts(color("barq: The AWS post exploitation framework written by Mohammed Aldoub @Voulnet", "green"))
+    puts(color(get_welcome_msg(), "green"))
 
     global loot_creds
     global ec2instances
@@ -122,52 +132,18 @@ def start():
     logger.addHandler(ch)
     logger.error('calling start')
 
-    myargs = dict(args.grouped)
-    if '--help' in myargs or '-h' in myargs:
-        help = """
-        barq framework options:
-        -h --help         - This menu
-        -k --keyid        - The AWS access key id
-        -s --secretkey    - The AWS secret access key. (Needs --keyid, mandatory)
-        -r --region       - The default region to use. (Needs --keyid)
-        -t --token        - The AWS session token to use. (Needs --keyid, optional)
-        """
-        print(help)
-        exit(0)
-    if '--keyid' in myargs or '-k' in myargs:
-        try:
-            aws_access_key_id = myargs['--keyid'][0]
-        except:
-            aws_access_key_id = myargs['-k'][0]
-        if '--secretkey' not in myargs and '-s' not in myargs:
-            puts(color("[!] using --secretkey is mandatory with --keyid"))
-            exit()
-        try:
-            aws_secret_access_key = myargs['--secretkey'][0]
-        except:
-            aws_secret_access_key = myargs['-s'][0]
-        if '--region' not in myargs and '-r' not in myargs:
-            puts(color("[!] using --region is mandatory with --keyid"))
-            exit()
-        try:
-            region_name = myargs['--region'][0]
-        except:
-            region_name = myargs['-r'][0]
-        if '--token' in myargs or '-t' in myargs:
-            try:
-                aws_session_token = myargs['--token'][0]
-            except:
-                aws_session_token = myargs['-t'][0]
-        else:
-            aws_session_token = ''
-
+    aws_access_key_id , aws_secret_access_key, region_name, aws_session_token = get_secret()
+    if not aws_access_key_id or aws_secret_access_key or region_name:
+        puts(color(
+            '[!] You haven\'t set your AWS credentials yet. Run command setprofile to set them'))
+    else:
         set_aws_creds_inline(
             aws_access_key_id, aws_secret_access_key, region_name, aws_session_token)
-
+        
     menu_forward('main')
 
 
-def menu_forward(menu):
+def menu_forward(menu) -> None:
     """
     Go forward to a new menu (Push to menu stack)
     :param menu: The menu to go to
@@ -187,27 +163,18 @@ def menu_forward(menu):
         main_loop()
 
 
-def menu_backward():
+def menu_backward() -> None:
     """
-    Go back to previous menu (Pull from menu stack)
+    Go back to main menu 
     :return: None
     """
-    global menu_stack
-    try:
-        current_menu = menu_stack.pop()
-        next_menu = menu_stack[-1]
-        if next_menu == 'main':
-            go_to_menu(next_menu)
-        elif next_menu == 'training':
-            go_to_menu(next_menu)
-        elif next_menu == 'ec2instances':
-            go_to_menu(next_menu)
-    except Exception as e:
-        print(e)
-        pass
+    # always navigate back to main menu
+    # the stack has only 2 states ['main', 'training] or ['main', 'ec2instances']
+    # menu_stack.pop() will remove the last element so in both cases return to main
+    # dynamic navigation should be written based on stack complixity and supported feature
+    go_to_menu('main')
 
-
-def go_to_menu(menu):
+def go_to_menu(menu) -> None:
     """
     Go to a menu directly, bypassing the stack. This is used for functionality that involves interaction under a particular menu,
     and therefore does not add a menu to the stack.
@@ -221,28 +188,6 @@ def go_to_menu(menu):
     elif menu == 'ec2instances':
         instances_loop()
 
-
-def handle_menu():
-    """
-    Pop the top menu from the stack and go to it.
-    :return: None
-    """
-    global menu_stack
-    try:
-        current_menu = menu_stack.pop()
-        if current_menu == 'main':
-            main_loop()
-        elif current_menu == 'ec2instances':
-            instances_loop()
-        elif current_menu == 'training':
-            training_loop()
-        else:
-            main_loop()
-    except Exception as e:
-        print(e)
-    main_loop()
-
-
 def training_loop():
     """
     The menu handler loop for the training menu. Reads commands and send them to the processor, otherwise shows the menu prompt.
@@ -250,7 +195,7 @@ def training_loop():
     """
     try:
         command = ''
-        while command == '':
+        while len(command) == 0:
             try:
                 readline.set_completer_delims(' \t\n;')
                 readline.parse_and_bind("tab: complete")
@@ -260,7 +205,7 @@ def training_loop():
             except Exception as e:
                 print(e)
             #command = prompt.query('aws sheller training > ', validators=[])
-        command = str(command)
+        #command = str(command) # no need for string casting and assignment
         process_training_command(command)
     except KeyboardInterrupt as k:
         print("CTRL C clicked in training")
@@ -1018,7 +963,6 @@ def process_training_command(command):
     elif command == 'start':
         start_training_mode('training')
     elif command == 'back':
-        # handle_menu()
         menu_backward()
     elif command == 'showprofile':
         show_aws_creds('training')
@@ -1116,7 +1060,7 @@ def get_instance_details(caller):
     go_to_menu(caller)
 
 
-def process_instances_command(command):
+def process_instances_command(command) -> None:
     """
     Process command in the EC2 instances menu.
     :param command: The command to process.
@@ -1142,7 +1086,6 @@ def process_instances_command(command):
     elif command == 'ec2attacks':
         ec2attacks('ec2instances')
     elif command == 'back':
-        # handle_menu()
         menu_backward()
     elif command == 'list':
         get_ec2_instances('ec2instances')
@@ -1165,7 +1108,7 @@ def instances_loop():
     """
     try:
         command = ''
-        while command == '':
+        while len(command) == 0:
             try:
                 readline.set_completer_delims(' \t\n;')
                 readline.parse_and_bind("tab: complete")
@@ -1173,7 +1116,7 @@ def instances_loop():
                 command = raw_input('barq '+color('instances', 'blue')+' > ')
             except Exception as e:
                 print(e)
-        command = str(command)
+        #command = str(command) # no need for string casting and assignment
         process_instances_command(command)
     except KeyboardInterrupt as k:
         print("CTRL+C pressed.")
@@ -1185,14 +1128,15 @@ def instances_loop():
             instances_loop()
 
 
-def main_loop():
+def main_loop() -> None:
     """
     The command handler loop for the main menu. Commands will be sent to the processor and the prompt will be displayed.
     :return: None
     """
+    #menu_stack.append('main')
     try:
-        command = ''
-        while command == '':
+        command: str = ''
+        while len(command) == 0: 
             try:
                 readline.set_completer_delims(' \t\n;')
                 readline.parse_and_bind("tab: complete")
@@ -1201,7 +1145,8 @@ def main_loop():
             except Exception as e:
                 exit()
             #command = prompt.query('aws sheller main> ', validators=[])
-        command = str(command)
+        
+        #command = str(command) # no need for string casting and another assignment
         process_main_command(command)
     except KeyboardInterrupt as k:
         print(color("CTRL+C pressed. Exiting...", 'red'))
@@ -1242,7 +1187,6 @@ def process_main_command(command):
         get_security_groups('main')
     elif command == 'training':
         # menu_stack.append('training')
-        # handle_menu()
         menu_forward('training')
     elif command == 'ec2instances':
         menu_forward('ec2instances')
@@ -1888,7 +1832,6 @@ def set_aws_creds(caller):
     my_aws_creds = {'aws_access_key_id': aws_access_key_id, 'aws_secret_access_key': aws_secret_access_key,
                     'region_name': chosen_region, 'aws_session_token': aws_session_token, 'session': mysession, 'possible_regions': possible_regions}
     # menu_stack.append(caller)
-    # handle_menu()
     go_to_menu(caller)  # menu_backward()
 
 
@@ -1949,7 +1892,6 @@ def show_aws_creds(caller):
         puts(color(
             '[!] You haven\'t set your AWS credentials yet. Run the command setprofile to set them'))
         # menu_stack.append(caller)
-        # handle_menu()
         go_to_menu(caller)
     try:
         puts(color('[+] Your AWS credentials:'))
@@ -1964,11 +1906,10 @@ def show_aws_creds(caller):
         puts(color(
             '[!] You haven\'t set your AWS credentials yet. Run the command dumpsecrets to set them'))
     # menu_stack.append(caller)
-    # handle_menu()
     go_to_menu(caller)
 
 
-def main_help():
+def main_help() -> None:
     """
     Display Main Menu help options.
     :return: None
@@ -2009,7 +1950,7 @@ def maincomplete(text, state):
                 state -= 1
 
 
-def training_help():
+def training_help() -> None:
     """
     Display command options for the training menu.
     :return: None
@@ -2044,7 +1985,7 @@ def trainingcomplete(text, state):
                 state -= 1
 
 
-def instances_help():
+def instances_help() -> None:
     """
     Display command options for the EC2 instances menu.
     :return:
@@ -2068,16 +2009,15 @@ def instances_help():
             """)
     instances_loop()
 
-
-INSTANCESCOMMANDS = ['help', 'where', 'back', 'exit', 'setprofile', 'showprofile', 'showsecrets',
-                     'ec2attacks', 'dumpsecrets', 'attacksurface', 'list', 'commandresults', 'securitygroups', 'instance']
-
-
 def instancecomplete(text, state):
     """
     Autocomplete for EC2 instances menu
 
     """
+    
+    INSTANCESCOMMANDS = ['help', 'where', 'back', 'exit', 'setprofile', 'showprofile', 'showsecrets',
+                     'ec2attacks', 'dumpsecrets', 'attacksurface', 'list', 'commandresults', 'securitygroups', 'instance']
+
     for cmd in INSTANCESCOMMANDS:
         if cmd.startswith(text):
             if not state:
@@ -2085,63 +2025,5 @@ def instancecomplete(text, state):
             else:
                 state -= 1
 
-
-asciilogo = """
-                                                                                                    
-                                                  .                                                 
-                                                 :y-                                                
-                                                :yy:                                                
-                                               /ys/:`                                               
-                                              /yo/::-                                               
-                                             /y+/::::`                                              
-                                            +y/+:::::-                                              
-                                           +s:+:::::::`                                             
-                                         `+s-+::::::::-                                             
-                                        `oo.o/:::::::-`                                             
-                                       `o+.o/::::::::                                               
-                                      `o/`s/::::::/o:                                               
-                                     `o:`s+::::::/sy`                                               
-                                    .o-`s+-----::+++..........`                                     
-                        `          .+.`so-------------------::`         .`                          
-                    ``.--`        .+``so-----:::::::::-----:-`          oys+-.`                     
-                `..---..`        ./ `ys----::/+++++oo/----:-            .:+yhhyo:.`                 
-            `.----.``           .: `ys:---::+oyssooo+----::....```          .-+shhyo/-`             
-       ``.----.``              .- `yh+++++ooooo+//::----:.   ``     `           `-/oyhhs+:``        
-     .----.`                  ..  :/::-..``      `-----:--:/+o/    `                 .:+ydhy:       
-     .----.`                 .`               `..-----/ssssss+   `.                 `.:oydhy:       
-       ``.----.`            `         ``.-:/+os/----:+ysssss+   .-              `-/oydhy+:.         
-           ``.----.``          `.--:/+ooossssy/----:+osssss+`  --           `-+shhhs/-`             
-                `..---..`   ````    `-ooooosyys+/::ossoooo+`  :-        `:oyddyo:.                  
-                    ``.--`           /oooosyyyysooosooooo+`  /-         shs+-`                      
-                                   `+ooooooooooooooooooo+` `+-          `                           
-                                  .oooooooooooooooooooo+` .o-                                       
-                                  .//////////yyyso+++++` -s-                                        
-                                             yys++++++` :s-                                         
-                                             oo++++++. /s-                                          
-                                            `/++++++.`+o.                                           
-                                           ./++++++.`oo.                                            
-                                           :////+/..so-                                             
-                                           ./////.:y+-                                              
-                                           `////-/y+-                                               
-                                            ://-+y+-                                                
-                                       
-                                            ./:oy+-                                                 
-                                            `/sy/-                                                  
-                                             oy/-                                                   
-                                             //-                                                    
-                         `--.                `-                                                     
-                         -dd/                                                                       
-                         -dd/`-:-`    `.----.`     `..``---`   `---``..                             
-                         -ddysyhdy:   :sooooys:    /yyossss/  -sysoosyy`                            
-                         -ddy` `ydh`  ..---:sys    /yy+`  `` `yyo` `syy`                            
-                         -dd+   odd. .oyyo++yyy    /yy.      .yy/   +yy`                            
-                         -ddy``.hdh  /yy:  `yyy    /yy.      `yys```syy`                            
-                         -hhsyyhhy-  .sys++osyy    /yy.       -syyossyy`                            
-                         `..``--.      ..-. ...    `..          .-. +yy`                            
-                                                                    +yy`                            
-                                                                    `..                             
-                                                                                                    
-"""
-
-
-start()
+if __name__ == "__main__":
+    start()
