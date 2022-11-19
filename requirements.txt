@@ -2,3 +2,4 @@ clint==0.5.1
 prettytable==0.7.2
 Pygments==2.3.1
 boto3==1.9.86
+pyyaml==6.0
